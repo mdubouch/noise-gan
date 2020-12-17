@@ -2,18 +2,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Number of wires in the CDC
+n_wires = 4986
+# Number of continuous features (E, t, dca)
+n_features = 3
+
 class Gen(nn.Module):
-    def __init__(self, ngf, latent_dims):
+    def __init__(self, ngf, latent_dims, seq_len):
         super().__init__()
         
         self.ngf = ngf
+        self.seq_len = seq_len
         
         # Input: (B, latent_dims, 1)
         self.act = nn.LeakyReLU(0.2, False)
 
         self.dropout = nn.Dropout(0.05)
 
-        self.lin0 = nn.Linear(latent_dims, chunk_size//64*ngf*4, bias=True)
+        self.lin0 = nn.Linear(latent_dims, seq_len//64*ngf*4, bias=True)
 
         self.convu1 = nn.ConvTranspose1d(ngf*4, ngf*4, 4, 2, 1) # * 2
         self.convu2 = nn.ConvTranspose1d(ngf*4, ngf*4, 4, 2, 1) # * 4
@@ -48,7 +54,7 @@ class Gen(nn.Module):
         self.convw2 = nn.ConvTranspose1d(ngf*2, ngf*2, 257, 1, 128)
         self.bnw2 = nn.BatchNorm1d(ngf*2)
         self.convw3 = nn.ConvTranspose1d(ngf*2, ngf*1, 513, 1, 256)
-        self.convw = nn.ConvTranspose1d(ngf*1, cum_n_wires[-1], 1, 1, 0, bias=False)
+        self.convw = nn.ConvTranspose1d(ngf*1, n_wires, 1, 1, 0, bias=False)
 
         self.convp0 = nn.ConvTranspose1d(ngf*4, ngf*2, 17, 1, 8)
         self.bnp0 = nn.BatchNorm1d(ngf*2)
@@ -64,7 +70,7 @@ class Gen(nn.Module):
         
     def forward(self, z, embed_space_noise, tau):
         # z: random point in latent space
-        x0 = self.lin0(z).view(-1, self.ngf*4, chunk_size // 64)
+        x0 = self.lin0(z).view(-1, self.ngf*4, self.seq_len // 64)
 
         x1 = self.bnu1(self.act(self.convu1(self.dropout(self.act(x0)))))
         x2 = self.bnu2(self.act(F.interpolate(x1, scale_factor=2) + self.convu2(self.dropout(x1))))
@@ -98,7 +104,7 @@ class Gen(nn.Module):
         return self.out(p), sim.permute(0,2,1)
 
 class Disc(nn.Module):
-    def __init__(self, ndf):
+    def __init__(self, ndf, seq_len):
         super().__init__()
         
         # (B, n_features, 256)
@@ -107,7 +113,7 @@ class Disc(nn.Module):
         self.dropout = nn.Dropout(0.01)
 
 
-        self.convw = nn.Conv1d(cum_n_wires[-1], ndf*1, 1, 1, 0, bias=False)
+        self.convw = nn.Conv1d(n_wires, ndf*1, 1, 1, 0, bias=False)
         self.convw0 = nn.utils.spectral_norm(nn.Conv1d(ndf*1, ndf*2, 513, 1, 256, padding_mode='circular'))
         self.convw1 = nn.utils.spectral_norm(nn.Conv1d(ndf*2, ndf*2, 257, 1, 128, padding_mode='circular'))
         self.convw2 = nn.utils.spectral_norm(nn.Conv1d(ndf*2, ndf*2, 129, 1, 64, padding_mode='circular'))
@@ -126,7 +132,7 @@ class Disc(nn.Module):
         self.conv4 = nn.utils.spectral_norm(nn.Conv1d(ndf*4, ndf*4, 17, 1, 8, padding_mode='circular'))
         self.conv5 = nn.utils.spectral_norm(nn.Conv1d(ndf*4, ndf*4, 9, 1, 4, padding_mode='circular'))
 
-        self.lin0 = nn.Linear(ndf*4 * chunk_size // 1, 1, bias=True)
+        self.lin0 = nn.Linear(ndf*4 * seq_len // 1, 1, bias=True)
 
         self.out = nn.Identity()
 
@@ -136,8 +142,8 @@ class Disc(nn.Module):
         #norm = w_.norm(dim=2).norm(dim=1)
         #occupancy = w_.sum(dim=2).var(dim=1)
 
-        #norm = norm.repeat((chunk_size, 1, 1)).permute(2, 1, 0)
-        #occupancy = occupancy.repeat((chunk_size, 1, 1)).permute(2, 1, 0)
+        #norm = norm.repeat((seq_len, 1, 1)).permute(2, 1, 0)
+        #occupancy = occupancy.repeat((seq_len, 1, 1)).permute(2, 1, 0)
 
         w = self.convw(w_)
         w0 = self.convw0(w)
@@ -168,6 +174,3 @@ class Disc(nn.Module):
         return self.out(x).squeeze(1)
 
 
-#latent_dims = 256
-#gen = to_device(Gen256Ups(16, latent_dims=latent_dims))
-#disc = to_device(Disc256Ups(16))
