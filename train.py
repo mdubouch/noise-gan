@@ -1,4 +1,3 @@
-from networks import *
 import argparse
 
 parser = argparse.ArgumentParser('Train CDC GAN')
@@ -13,7 +12,29 @@ ndf = args.ndf
 latent_dims = args.latent_dims
 seq_len = args.sequence_length
 
-gen = Gen(ngf=ngf, latent_dims=latent_dims, seq_len=seq_len)
+print('Importing networks...')
+import networks
+gen = networks.Gen(ngf=ngf, latent_dims=latent_dims, seq_len=seq_len)
 print(gen)
-disc = Disc(ndf=ndf, seq_len=seq_len)
+disc = networks.Disc(ndf=ndf, seq_len=seq_len)
 print(disc)
+
+print('Importing geometry...')
+import geom_util as gu
+print('cumulative wires', gu.cum_n_wires)
+
+print('Importing dataset...')
+import data
+print('pot', data.n_pot, ' bunches', data.n_bunches)
+print('dtypes', data.tree.dtype)
+print('shape', data.tree.shape)
+
+print('Pre-processing...')
+
+print('Training begin')
+import time
+from tqdm import tqdm
+for i in tqdm(range(100)):
+    time.sleep(0.01) 
+
+print('Done')
