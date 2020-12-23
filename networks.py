@@ -174,3 +174,5 @@ class Disc(nn.Module):
         return self.out(x).squeeze(1)
 
 
+def get_n_params(model):
+    return sum(p.reshape(-1).shape[0] for p in model.parameters())
