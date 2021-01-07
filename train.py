@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 parser = argparse.ArgumentParser('Train CDC GAN')
@@ -14,9 +16,12 @@ parser.add_argument('--ndf', type=int, default=16)
 parser.add_argument('--latent-dims', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=2048)
 parser.add_argument('--log', type=str, default='info')
-parser.add_argument('--output-dir', type=str, default='output/')
+parser.add_argument('--job-id', type=int)
+parser.add_argument('--gfx', type=bool, default=False)
+parser.add_argument('--seed', type=int, default=1337)
 args = parser.parse_args()
-output_dir = args.output_dir
+output_dir = 'output_%d/' % (args.job_id)
+print('Outputting to %s' % (output_dir))
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -27,6 +32,14 @@ ngf = args.ngf
 ndf = args.ndf
 latent_dims = args.latent_dims
 seq_len = args.sequence_length
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(args.seed)
+    logging.info('Running on GPU: %s' % (torch.cuda.get_device_name()))
+else:
+    logging.info('Running on CPU')
 
 def to_device(x):
     if torch.cuda.is_available():
@@ -48,10 +61,12 @@ logging.info('discriminator params: %d' % (networks.get_n_params(disc)))
 #logging.info('cumulative wires {0}'.format(gu.cum_n_wires))
 
 print('Importing dataset...')
-import data
+import dataset
+data = dataset.Data()
+data.load()
 logging.info('pot %d  bunches %d', data.n_pot, data.n_bunches)
-logging.info('dtypes {0}'.format(data.tree.dtype))
-logging.info('shape {0}'.format(data.tree.shape))
+logging.info('dtypes {0}'.format(data.data.dtype))
+logging.info('shape {0}'.format(data.data.shape))
 
 import geom_util
 gu = geom_util.GeomUtil(data.get_cdc_tree())
@@ -59,7 +74,10 @@ gu.validate_wire_pos()
 
 print(data.get_cdc_tree().shape, data.get_cdc_tree().dtype)
 import matplotlib
-matplotlib.use('TkAgg')
+if args.gfx:
+    matplotlib.use('TkAgg')
+else:
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.figure(figsize=(6,6))
 plt.scatter(gu.wire_x, gu.wire_y, s=1, c=gu.layer)
@@ -68,9 +86,9 @@ plt.clf()
 
 print('Pre-processing...')
 train_minmax = data.preprocess()
-data.diagnostic_plots(train_minmax, output_dir)
+data.diagnostic_plots(output_dir)
 
-train_loader, train_dataset, n_chunks = data.chunk(train_minmax, seq_len, batch_size=12)
+train_loader, train_dataset, n_chunks = data.chunk(seq_len, batch_size=12)
 print(train_dataset[0:4][0].shape)
 
 def sample_real(batch_size):
@@ -157,7 +175,7 @@ lambda_gp = 10
 n_critic = 2
 for e in range(n_epochs):
     logging.info('Epoch %d' % (e))
-    for i, (real_p, real_w) in enumerate(train_loader):
+    for i, (real_p, real_w) in enumerate(tqdm(train_loader)):
 
         optimizer_disc.zero_grad()
 
@@ -214,31 +232,16 @@ print('Done')
 
 print('Saving models...')
 
-def save_states(version, epoch, path):
+def save_states(epoch):
     states = { 'disc': disc.state_dict(), 'd_opt': optimizer_disc.state_dict(), 
             'd_loss': discriminator_losses, 'gen': gen.state_dict(), 
             'g_opt': optimizer_gen.state_dict(), 'g_loss': generator_losses, 
-            'tau': tau, 'n_epochs': epoch }
+            'tau': tau, 'n_epochs': epoch, 'qt': data.qt, 'minmax': data.minmax }
 
-    torch.save(states, path + '/states_%s_%de.pt' % (version, epoch))
-    print("Saved to", path + '/states_%s_%de.pt' % (version, epoch))
+    torch.save(states, output_dir + 'states.pt')
+    print("Saved after %d epochs to" % (epoch), output_dir + '/states.pt')
 
-def load_states(path):
-    states = torch.load(path)
-    disc.load_state_dict(states['disc'])
-    optimizer_disc.load_state_dict(states['d_opt'])
-    global discriminator_losses
-    discriminator_losses = states['d_loss']
-    gen.load_state_dict(states['gen'])
-    optimizer_gen.load_state_dict(states['g_opt'])
-    global generator_losses
-    generator_losses = states['g_loss']
-    global tau
-    tau = states['tau']
-    global n_epochs
-    n_epochs = states['n_epochs']
-    print('done')
 
 print(len(discriminator_losses), len(train_loader))
 n_epochs = len(discriminator_losses) // len(train_loader)
-save_states('3f1af4c+2_local', n_epochs, '.')
+save_states(n_epochs)

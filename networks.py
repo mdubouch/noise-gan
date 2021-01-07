@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Number of wires in the CDC
-n_wires = 4986
+n_wires = 3606
 # Number of continuous features (E, t, dca)
 n_features = 3
 
@@ -68,7 +68,7 @@ class Gen(nn.Module):
 
         self.out = nn.Tanh()
         
-    def forward(self, z, embed_space_noise, tau):
+    def forward(self, z, embed_space_noise=0.0, tau=1.0):
         # z: random point in latent space
         x0 = self.lin0(z).view(-1, self.ngf*4, self.seq_len // 64)
 
