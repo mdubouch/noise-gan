@@ -1,4 +1,4 @@
-import uproot
+import uproot3 as uproot
 import torch
 import logging
 import numpy as np
@@ -6,21 +6,25 @@ import sklearn.preprocessing as skp
 
 def get_noise_data():
 
-    file = uproot.open('reconstructible_mc5a02_rconsthits.root')
+    file = uproot.open('reconstructible_toy+cdc.root')
     n_pot = 990678399
     n_bunches = n_pot / 16e6
     
     data = file['noise/noise'].array()
+    cdc_tree = file['cdc_geom/wires'].array()
 
-    return data, n_pot
+    return data, n_pot, cdc_tree
 
 def get_chanmap():
     f_chanmap = uproot.open('chanmap_20180416.root')
     chan_tree = f_chanmap['t']
     return chan_tree
 
-tree, n_pot = get_noise_data()
+tree, n_pot, cdc_tree = get_noise_data()
 n_bunches = n_pot / 16e6
+
+def get_cdc_tree():
+    return cdc_tree
 
 # Set up the data, throw away the invalid ones
 wire = tree['wire']
@@ -74,8 +78,6 @@ def inv_preprocess(tensor):
 
 def diagnostic_plots(train_minmax, output_dir):
     # Some diagnostic plots
-    import matplotlib
-    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import numpy as np
     plt.hist(np.log10(edep), bins=50)

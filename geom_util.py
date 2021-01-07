@@ -1,49 +1,30 @@
 import uproot
 import numpy as np
 
-f_chanmap = uproot.open('chanmap_20180416.root')
-chan_tree = f_chanmap['t']
+class GeomUtil():
+    def __init__(self, cdc_tree):
+        self.wire_x = cdc_tree['z'] - 7650
+        self.wire_y = cdc_tree['y']
+        self.n_wires = cdc_tree['z'].size
+        self.id = cdc_tree['id']
+        self.layer = cdc_tree['layer']
+        uq, cnts = np.unique(self.layer, return_counts=True)
+        self.n_wires_per_layer = cnts
+        self.cum_n_wires = np.cumsum(self.n_wires_per_layer)
+        assert(self.n_wires_per_layer.sum() == self.cum_n_wires[-1])
+    
+    def wire_pos(self, wire_idx):
+        # wire_idx is array of indices
+        cond = (wire_idx[:, np.newaxis] == self.id)
+        big_x = np.tile(self.wire_x, (wire_idx.size, 1))
+        big_y = np.tile(self.wire_y, (wire_idx.size, 1))
 
-# Define everything in terms of only sense wires
-xro = chan_tree['xro'].array()
-yro = chan_tree['yro'].array()
-map_layerid = chan_tree['LayerID'].array()
-map_wire = chan_tree['wire'].array()
+        arr = (big_x[cond], big_y[cond])
 
-issense = chan_tree['isSenseWire'].array()
+        return arr
 
-xro = xro[issense==True]
-yro = yro[issense==True]
-map_layerid = map_layerid[issense==True]
-map_wire = map_wire[issense==True]
+    def validate_wire_pos(self):
+        x, y = self.wire_pos(np.arange(0, self.cum_n_wires[-1]))
+        assert((x == self.wire_x).all())
+        assert((y == self.wire_y).all())
 
-n_wires_per_layer = np.zeros(np.unique(map_layerid).size, dtype=int)
-for l in np.unique(map_layerid):
-    n_wires_per_layer[l] = map_wire[(map_layerid==l)].size
-
-cum_n_wires = np.concatenate([[0], np.cumsum(n_wires_per_layer)])
-
-def wire_abs_to_rel(wire_idx):
-    layer = (wire_idx[:, np.newaxis] >= cum_n_wires).sum(axis=1) - 1
-    wire = wire_idx - (cum_n_wires[layer])
-
-    return (layer, wire)
-
-
-def wire_rel_to_abs(layer_idx, wire_idx):
-    return cum_n_wires[layer_idx] + wire_idx
-
-map_wire_abs = wire_rel_to_abs(map_layerid, map_wire)
-n_wires = np.unique(map_wire_abs).size
-map_wire_abs[np.arange(0, n_wires)] = np.arange(0, n_wires)
-
-def wire_pos(wire_abs_idx):
-    cond = (wire_abs_idx[:, np.newaxis] == map_wire_abs)
-    big_xro = np.tile(xro, (wire_abs_idx.size, 1))
-    big_yro = np.tile(yro, (wire_abs_idx.size, 1))
-
-    arr = (big_xro[cond], big_yro[cond])
-
-    return arr
-
-wire_x, wire_y = wire_pos(np.arange(0, map_wire_abs.size))

@@ -43,15 +43,28 @@ logging.info(disc)
 logging.info('generator params: %d' % (networks.get_n_params(gen)))
 logging.info('discriminator params: %d' % (networks.get_n_params(disc)))
 
-print('Importing geometry...')
-import geom_util as gu
-logging.info('cumulative wires {0}'.format(gu.cum_n_wires))
+#print('Importing geometry...')
+#import geom_util as gu
+#logging.info('cumulative wires {0}'.format(gu.cum_n_wires))
 
 print('Importing dataset...')
 import data
 logging.info('pot %d  bunches %d', data.n_pot, data.n_bunches)
 logging.info('dtypes {0}'.format(data.tree.dtype))
 logging.info('shape {0}'.format(data.tree.shape))
+
+import geom_util
+gu = geom_util.GeomUtil(data.get_cdc_tree())
+gu.validate_wire_pos()
+
+print(data.get_cdc_tree().shape, data.get_cdc_tree().dtype)
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+plt.figure(figsize=(6,6))
+plt.scatter(gu.wire_x, gu.wire_y, s=1, c=gu.layer)
+plt.savefig(output_dir+'wire_position.png', dpi=120)
+plt.clf()
 
 print('Pre-processing...')
 train_minmax = data.preprocess()
