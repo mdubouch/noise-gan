@@ -1,3 +1,6 @@
 *.pyc
 *.root
 *.swp
+*.pt
+*.o*
+*.po*

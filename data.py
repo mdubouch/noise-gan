@@ -74,6 +74,8 @@ def inv_preprocess(tensor):
 
 def diagnostic_plots(train_minmax, output_dir):
     # Some diagnostic plots
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import numpy as np
     plt.hist(np.log10(edep), bins=50)

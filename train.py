@@ -142,8 +142,9 @@ gen.train()
 disc.train()
 lambda_gp = 10
 n_critic = 2
-for _ in range(n_epochs):
-    for i, (real_p, real_w) in enumerate(tqdm(train_loader)):
+for e in range(n_epochs):
+    logging.info('Epoch %d' % (e))
+    for i, (real_p, real_w) in enumerate(train_loader):
 
         optimizer_disc.zero_grad()
 
