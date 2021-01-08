@@ -7,6 +7,11 @@
 #$ -q mc_gpu_long
 #$ -pe multicores_gpu 4
 #$ -l sps=1,GPU=1,GPUtype=V100
+
+import os
+import sys
+sys.path.append(os.getcwd())
+
 import argparse
 import logging
 import os
@@ -184,7 +189,7 @@ lambda_gp = 10
 n_critic = 2
 for e in range(n_epochs):
     logging.info('Epoch %d' % (e))
-    for i, (real_p, real_w) in enumerate(tqdm(train_loader)):
+    for i, (real_p, real_w) in enumerate(train_loader):
 
         optimizer_disc.zero_grad()
 
