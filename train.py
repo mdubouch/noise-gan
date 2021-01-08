@@ -1,3 +1,12 @@
+#!/usr/bin/python3
+#$ -P P_comet
+#$ -j y
+#$ -cwd
+#$ -M m.dubouchet18@imperial.ac.uk
+#$ -m be
+#$ -q mc_gpu_long
+#$ -pe multicores_gpu 4
+#$ -l sps=1,GPU=1,GPUtype=V100
 import argparse
 import logging
 import os
@@ -16,11 +25,11 @@ parser.add_argument('--ndf', type=int, default=16)
 parser.add_argument('--latent-dims', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=2048)
 parser.add_argument('--log', type=str, default='info')
-parser.add_argument('--job-id', type=int)
 parser.add_argument('--gfx', type=bool, default=False)
 parser.add_argument('--seed', type=int, default=1337)
 args = parser.parse_args()
-output_dir = 'output_%d/' % (args.job_id)
+job_id = int(os.getenv('JOB_ID', default='0'))
+output_dir = 'output_%d/' % (job_id)
 print('Outputting to %s' % (output_dir))
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)

@@ -52,7 +52,10 @@ n_epochs = 0
 # Load network states
 def load_states(path):
     print('Loading GAN states from %s...' % (path))
-    states = torch.load(path)
+    device = torch.device('cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    states = torch.load(path, map_location=device)
     disc.load_state_dict(states['disc'])
     optimizer_disc.load_state_dict(states['d_opt'])
     global discriminator_losses
@@ -69,7 +72,7 @@ def load_states(path):
     data.qt = states['qt']
     data.minmax = states['minmax']
     print('OK')
-load_states('output_%d/states_%d.pt' % (args.job_id, args.job_id))
+load_states('output_%d/states.pt' % (args.job_id))
 
 def sample_fake(batch_size, tau):
     noise = to_device(torch.randn((batch_size, latent_dims), requires_grad=True))
@@ -115,3 +118,7 @@ plt.figure()
 plt.hist(np.log10(data.edep), bins=50, alpha=0.7, density=True)
 plt.hist(np.log10(inv_p[:,0].cpu()), bins=50, alpha=0.7, density=True)
 plt.savefig(output_dir+'comp_edep.png', dpi=120)
+
+# Grid of hit sequences
+plt.figure()
+
