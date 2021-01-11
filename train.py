@@ -29,6 +29,7 @@ parser.add_argument('--ngf', type=int, default=16)
 parser.add_argument('--ndf', type=int, default=16)
 parser.add_argument('--latent-dims', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=2048)
+parser.add_argument('--net-version', type=int)
 parser.add_argument('--log', type=str, default='info')
 parser.add_argument('--gfx', type=bool, default=False)
 parser.add_argument('--seed', type=int, default=1337)
@@ -39,7 +40,7 @@ print('Outputting to %s' % (output_dir))
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-logging.basicConfig(filename='output.log', level=getattr(logging, args.log.upper()), format='%(asctime)s %(message)s')
+logging.basicConfig(filename=output_dir+'output.log', level=getattr(logging, args.log.upper()), format='%(asctime)s %(message)s')
 
 n_epochs = args.n_epochs
 ngf = args.ngf
@@ -61,8 +62,10 @@ def to_device(x):
     else:
         return x
 
-print('Importing networks...')
-import networks
+print('Import networks version %d' % (args.net_version))
+import importlib
+networks = importlib.import_module('networks%d' % (args.net_version))
+print('Importing networks from "%s"...' % (networks.__name__))
 gen = to_device(networks.Gen(ngf=ngf, latent_dims=latent_dims, seq_len=seq_len))
 logging.info(gen)
 disc = to_device(networks.Disc(ndf=ndf, seq_len=seq_len))
@@ -148,6 +151,14 @@ import time
 import torch.autograd as autograd
 from tqdm import tqdm
 
+def save_states(epoch):
+    states = { 'disc': disc.state_dict(), 'd_opt': optimizer_disc.state_dict(), 
+            'd_loss': discriminator_losses, 'gen': gen.state_dict(), 
+            'g_opt': optimizer_gen.state_dict(), 'g_loss': generator_losses, 
+            'tau': tau, 'n_epochs': epoch, 'qt': data.qt, 'minmax': data.minmax }
+
+    torch.save(states, output_dir + 'states_%d.pt' % (epoch+1))
+    print("Saved after epoch %d to" % (epoch), output_dir + '/states_%d.pt' % (epoch+1))
 
 # Implement "Gradient Penalty" for WGAN-GP (https://arxiv.org/pdf/1704.00028.pdf)
 def gradient_penalty(disc, real_p, real_w, fake_p, fake_w):
@@ -240,20 +251,15 @@ for e in range(n_epochs):
 
         if (noise_level > 1e-4):
             noise_level *= 0.999
+    if ((e+1) % 5) == 0:
+        save_states(e)
+
 
 
 print('Done')
 
 print('Saving models...')
 
-def save_states(epoch):
-    states = { 'disc': disc.state_dict(), 'd_opt': optimizer_disc.state_dict(), 
-            'd_loss': discriminator_losses, 'gen': gen.state_dict(), 
-            'g_opt': optimizer_gen.state_dict(), 'g_loss': generator_losses, 
-            'tau': tau, 'n_epochs': epoch, 'qt': data.qt, 'minmax': data.minmax }
-
-    torch.save(states, output_dir + 'states.pt')
-    print("Saved after %d epochs to" % (epoch), output_dir + '/states.pt')
 
 
 print(len(discriminator_losses), len(train_loader))
