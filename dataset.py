@@ -101,7 +101,7 @@ class Data():
     
         train_minmax_torch = torch.from_numpy(self.train_minmax).T
         chunk_size = seq_len
-        chunk_stride = 256
+        chunk_stride = 24
         train_minmax_chunked = train_minmax_torch.unfold(1, 
                 chunk_size, chunk_stride) # (feature, batch, seq)
         self.n_chunks = train_minmax_chunked.shape[1]
