@@ -11,6 +11,8 @@ class GeomUtil():
         uq, cnts = np.unique(self.layer, return_counts=True)
         self.n_wires_per_layer = cnts
         self.cum_n_wires = np.cumsum(self.n_wires_per_layer)
+
+        self.n_layers = uq.size
         assert(self.n_wires_per_layer.sum() == self.cum_n_wires[-1])
     
     def wire_pos(self, wire_idx):
