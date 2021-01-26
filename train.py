@@ -70,6 +70,8 @@ gen = to_device(networks.Gen(ngf=ngf, latent_dims=latent_dims, seq_len=seq_len))
 logging.info(gen)
 disc = to_device(networks.Disc(ndf=ndf, seq_len=seq_len))
 logging.info(disc)
+print('generator params: %d' % (networks.get_n_params(gen)))
+print('discriminator params: %d' % (networks.get_n_params(disc)))
 logging.info('generator params: %d' % (networks.get_n_params(gen)))
 logging.info('discriminator params: %d' % (networks.get_n_params(disc)))
 
@@ -96,8 +98,15 @@ if args.gfx:
 else:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.rcParams['savefig.bbox'] = 'tight'
+plt.rcParams['savefig.transparent'] = False
+plt.rcParams['axes.labelsize'] = 'large'
+plt.rcParams['axes.titlesize'] = 'x-large'
+plt.rcParams['savefig.facecolor'] = 'white'
 plt.figure(figsize=(6,6))
 plt.scatter(gu.wire_x, gu.wire_y, s=1, c=gu.layer)
+plt.xlabel('x [mm]')
+plt.ylabel('y [mm]')
 plt.savefig(output_dir+'wire_position.png', dpi=120)
 plt.clf()
 
@@ -105,7 +114,7 @@ print('Pre-processing...')
 train_minmax = data.preprocess()
 data.diagnostic_plots(output_dir)
 
-train_loader, train_dataset, n_chunks = data.chunk(seq_len, batch_size=12)
+train_loader, train_dataset, n_chunks = data.chunk(seq_len, batch_size=24)
 print(train_dataset[0:4][0].shape)
 
 def sample_real(batch_size):
@@ -128,11 +137,12 @@ print(__f[0].shape, __f[1].shape)
 tau = 10
 discriminator_losses = []
 generator_losses = []
+occupancy_losses = []
 
 optimizer_gen = torch.optim.Adam(gen.parameters(),  lr=1e-4, betas=(0.5, 0.999))
 optimizer_disc = torch.optim.Adam(disc.parameters(), lr=1e-4, betas=(0.5, 0.999))
 
-noise_level = 0.1
+noise_level = 0.0
 def weight_init(m):
     if isinstance(m, nn.Conv1d) or isinstance(m, nn.ConvTranspose1d): # or isinstance(m, nn.Linear) # or isinstance(m, nn.BatchNorm1d):# or isinstance(m, nn.Embedding):
         nn.init.normal_(m.weight, 0., 0.008)
@@ -155,10 +165,11 @@ def save_states(epoch):
     states = { 'disc': disc.state_dict(), 'd_opt': optimizer_disc.state_dict(), 
             'd_loss': discriminator_losses, 'gen': gen.state_dict(), 
             'g_opt': optimizer_gen.state_dict(), 'g_loss': generator_losses, 
-            'tau': tau, 'n_epochs': epoch, 'qt': data.qt, 'minmax': data.minmax }
+            'tau': tau, 'n_epochs': epoch, 'qt': data.qt, 'minmax': data.minmax,
+            'occupancy_loss': occupancy_losses}
 
-    torch.save(states, output_dir + 'states_%d.pt' % (epoch+1))
-    print("Saved after epoch %d to" % (epoch), output_dir + '/states_%d.pt' % (epoch+1))
+    torch.save(states, output_dir + 'states_%d.pt' % (epoch))
+    print("Saved after epoch %d to" % (epoch), output_dir + '/states_%d.pt' % (epoch))
 
 # Implement "Gradient Penalty" for WGAN-GP (https://arxiv.org/pdf/1704.00028.pdf)
 def gradient_penalty(disc, real_p, real_w, fake_p, fake_w):
@@ -197,7 +208,7 @@ def gradient_penalty(disc, real_p, real_w, fake_p, fake_w):
 gen.train()
 disc.train()
 lambda_gp = 10
-n_critic = 2
+n_critic = 1
 for e in range(n_epochs):
     logging.info('Epoch %d' % (e))
     for i, (real_p, real_w) in enumerate(train_loader):
@@ -229,7 +240,7 @@ for e in range(n_epochs):
 
         if (i % n_critic == 0):
             # Generator update
-            disc.eval()
+            disc.train()
             gen.train()
             optimizer_gen.zero_grad()
             fake_hits = sample_fake(real_p.shape[0], tau)
@@ -237,8 +248,9 @@ for e in range(n_epochs):
             fake_w = fake_hits[1]
             out_fake = disc(*fake_hits)
 
+            occupancy_loss = (fake_w.sum(2).var(1).mean() - real_w.sum(2).var(1).mean())**2
+            occupancy_losses.append(occupancy_loss.item())
             
-            var_loss = torch.mean((fake_p.var(2).mean(0) - real_p.var(2).mean(0))**2)
             G_loss = -torch.mean(out_fake)            
 
             generator_losses.append(G_loss.item())
@@ -252,16 +264,19 @@ for e in range(n_epochs):
         if (noise_level > 1e-4):
             noise_level *= 0.999
     if ((e+1) % 5) == 0:
-        save_states(e)
+        save_states(e+1)
 
 
 
 print('Done')
 
+plt.figure()
+plt.plot(np.linspace(0, n_epochs, num=len(occupancy_losses)), occupancy_losses)
+plt.savefig(output_dir+'occupancy_losses.png', dpi=120)
+
 print('Saving models...')
 
 
 
-print(len(discriminator_losses), len(train_loader))
-n_epochs = len(discriminator_losses) // len(train_loader)
+print(n_epochs)
 save_states(n_epochs)

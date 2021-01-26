@@ -10,8 +10,8 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 parser = argparse.ArgumentParser('Train CDC GAN', argparse.SUPPRESS)
-parser.add_argument('--ngf', type=int, default=16)
-parser.add_argument('--ndf', type=int, default=16)
+parser.add_argument('--ngf', type=int)
+parser.add_argument('--ndf', type=int)
 parser.add_argument('--latent-dims', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=2048)
 parser.add_argument('--job-id', type=int)
@@ -21,10 +21,55 @@ parser.add_argument('--seed', type=int, default=1337)
 parser.add_argument('--gfx', type=bool, default=False)
 args = parser.parse_args()
 output_dir = 'output_%d/' % (args.job_id)
+
+import glob
+def find_last_epoch():
+    last_epoch = 0
+    for save_file in glob.glob(output_dir+'states_*.pt'):
+        idx = int(save_file.split('/')[1].split('_')[1].split('.')[0])
+        if idx > last_epoch:
+            last_epoch = idx
+    return last_epoch
+
+if args.epoch is None:
+    args.epoch = find_last_epoch()
+if args.ndf is None or args.ngf is None:
+    log_file = open(output_dir+'output.log', 'rt')
+    contents = log_file.read()
+    log_file.close()
+    g_s = contents.rfind("ngf=")
+    g_s = contents.find('=', g_s) + 1
+    g_e = contents.find('\n', g_s)
+    if g_s == -1:
+        print("Couldn't find ngf")
+        exit(1)
+    args.ngf = int(contents[g_s:g_e])
+    d_s = contents.rfind("ndf=")
+    d_s = contents.find('=', d_s) + 1
+    d_e = contents.find('\n', d_s)
+    if d_s == -1:
+        print("Couldn't find ndf")
+        exit(1)
+    args.ndf = int(contents[d_s:d_e])
+if args.net_version is None:
+    log_file = open(output_dir+'output.log', 'rt')
+    contents = log_file.read()
+    log_file.close()
+    n_s = contents.rfind('networks=')
+    if n_s == -1:
+        print("Couldn't find networks version")
+        exit(1)
+    n_s = contents.find('=', n_s) + 1
+    n_e = contents.find('\n', n_s)
+    args.net_version = int(contents[n_s:n_e])
+
+
 print('Evaluating job %d in %s at epoch %d' % (args.job_id, output_dir, args.epoch))
 
 ngf = args.ngf
 ndf = args.ndf
+print('ngf:', ngf)
+print('ndf:', ndf)
 latent_dims = args.latent_dims
 seq_len = args.sequence_length
 
@@ -61,6 +106,8 @@ optimizer_gen = torch.optim.Adam(gen.parameters(),  lr=1e-4, betas=(0.5, 0.999))
 optimizer_disc = torch.optim.Adam(disc.parameters(), lr=1e-4, betas=(0.5, 0.999))
 disciminator_losses = []
 generator_losses = []
+occupancy_losses = []
+gradient_penalty = []
 tau = 0
 n_epochs = 0
 
@@ -86,6 +133,11 @@ def load_states(path):
     global data
     data.qt = states['qt']
     data.minmax = states['minmax']
+    global occupancy_losses
+    occupancy_losses = states['occupancy_loss']
+    global gradient_penalty
+    if 'gradient_penalty' in states:
+        gradient_penalty = states['gradient_penalty']
     print('OK')
 load_states('output_%d/states_%d.pt' % (args.job_id, args.epoch))
 
@@ -113,18 +165,6 @@ plt.rcParams['savefig.facecolor'] = 'white'
 inv_p = data.inv_preprocess(p.permute(0, 2, 1).flatten(0, 1))
 print(inv_p.shape)
 
-fw = torch.argmax(w, dim=1).flatten().detach().cpu()
-print(fw.shape)
-plt.figure(figsize=(6,6))
-plt.scatter(gu.wire_x[fw], gu.wire_y[fw], s=inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
-        )
-plt.savefig(output_dir+'gen_scatter.png', dpi=120)
-
-plt.figure()
-plt.hist(np.log10(inv_p[:,0]).cpu(), bins=50)
-plt.savefig(output_dir+'gen_edep.png', dpi=120)
-
-
 # Load in the training data for comparisons
 print("Loading training data")
 data.load()
@@ -141,6 +181,28 @@ def only_walls(ax):
     ax.add_patch(outer);
     
     ax.set(xlim=(-800,800), ylim=(-800,800), xlabel='x [mm]', ylabel='y [mm]')
+    
+fw = torch.argmax(w, dim=1).flatten().detach().cpu()
+print(fw.shape)
+plt.figure()
+plt.scatter(gu.wire_x[fw], gu.wire_y[fw], s=inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
+        vmin=data.doca.min(), vmax=data.doca.max()
+        )
+# Draw lines between consecutive hits
+import matplotlib.lines as lines
+scatter_l = lines.Line2D(gu.wire_x[fw], gu.wire_y[fw], linewidth=0.1, color='gray', alpha=0.7)
+ax = plt.gca()
+ax.set_aspect(1.0)
+ax.add_line(scatter_l)
+only_walls(ax)
+plt.savefig(output_dir+'gen_scatter.png', dpi=240)
+
+plt.figure()
+plt.hist(np.log10(inv_p[:,0]).cpu(), bins=50)
+plt.savefig(output_dir+'gen_edep.png', dpi=120)
+
+
+
 
 
 # Features and correlations
@@ -185,10 +247,12 @@ for i in range(n_feat):
             #    ax.hist2d(_x, _y, bins=50, range=[[-1, 1], [-1, 1]], norm=mcolors.PowerNorm(0.5))
 plt.savefig(output_dir+'feature_matrix_fake.png', dpi=240, bbox_inches='tight')
 
+#############
+# Scatterplot comparison
 p, w = sample_fake(1, tau)
 
+fw = torch.argmax(w, dim=1).flatten().detach().cpu()
 inv_p = data.inv_preprocess(p.permute(0, 2, 1).flatten(0, 1))
-# Scatterplot comparison
 fig, ax = plt.subplots(1, 2, figsize=(12, 6))
 ax[0].set_title('GAN')
 ax[0].scatter(gu.wire_x[fw], gu.wire_y[fw], s=inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
@@ -197,7 +261,7 @@ ax[0].set_aspect(1.0)
 only_walls(ax[0])
 
 first_idx = np.random.randint(0, data.dbg_z.size - seq_len)
-last_idx = first_idx + 2048
+last_idx = first_idx + seq_len
 ax[1].set_title('G4')
 ax[1].scatter(data.dbg_z[first_idx:last_idx]-7650, data.dbg_y[first_idx:last_idx], s=data.edep[first_idx:last_idx]*1e3, c=data.doca[first_idx:last_idx], cmap='inferno',
         vmin=data.doca.min(), vmax=data.doca.max())
@@ -205,24 +269,49 @@ ax[1].set_aspect(1.0)
 only_walls(ax[1])
 plt.savefig(output_dir+'comp_scatter.png', dpi=120)
 
-# Feature histogram comparison
 plt.figure()
-plt.hist(np.log10(data.edep), bins=50, alpha=0.7, density=True, label='G4')
-plt.hist(np.log10(inv_p[:,0].cpu()), bins=50, alpha=0.7, density=True, label='GAN')
+plt.scatter(data.dbg_z[first_idx:last_idx]-7650, data.dbg_y[first_idx:last_idx], s=data.edep[first_idx:last_idx]*1e3, c=data.doca[first_idx:last_idx], cmap='inferno',
+        vmin=data.doca.min(), vmax=data.doca.max())
+scatter_l = lines.Line2D(data.dbg_z[first_idx:last_idx]-7650, data.dbg_y[first_idx:last_idx],
+        linewidth=0.1, color='gray', alpha=0.7)
+ax = plt.gca()
+ax.set_aspect(1.0)
+ax.add_line(scatter_l)
+plt.savefig(output_dir+'real_scatter.png', dpi=240)
+
+
+##########
+# Feature histogram comparison
+p, w = sample_fake(16, tau)
+
+fw = torch.argmax(w, dim=1).flatten().detach().cpu()
+inv_p = data.inv_preprocess(p.permute(0, 2, 1).flatten(0, 1))
+
+plt.figure()
+_min = np.log10(data.edep).min()
+_max = np.log10(data.edep).max()
+plt.hist(np.log10(data.edep), bins=50, alpha=0.7, density=True, label='G4', range=[_min, _max])
+plt.hist(np.log10(inv_p[:,0].cpu()), bins=50, alpha=0.7, density=True,
+        label='GAN', range=[_min, _max])
 plt.xlabel('log(Edep [MeV])')
 plt.legend()
 plt.savefig(output_dir+'comp_edep.png', dpi=120)
 
 plt.figure()
-plt.hist(np.log10(data.t), bins=50, alpha=0.7, density=True, label='G4')
-plt.hist(np.log10(inv_p[:,1].cpu()), bins=50, alpha=0.7, density=True, label='GAN')
+_min = np.log10(data.t).min()
+_max = np.log10(data.t).max()
+plt.hist(np.log10(data.t), bins=50, alpha=0.7, density=True, label='G4', range=[_min, _max])
+plt.hist(np.log10(inv_p[:,1].cpu()), bins=50, alpha=0.7, density=True,
+        label='GAN', range=[_min, _max])
 plt.xlabel('log(t [ns])')
 plt.legend()
 plt.savefig(output_dir+'comp_t.png', dpi=120)
 
 plt.figure()
-plt.hist(data.doca, bins=50, alpha=0.7, density=True, label='G4')
-plt.hist(inv_p[:,2].cpu(), bins=50, alpha=0.7, density=True, label='GAN')
+_min = data.doca.min()
+_max = data.doca.max()
+plt.hist(data.doca, bins=50, alpha=0.7, density=True, label='G4', range=[_min, _max])
+plt.hist(inv_p[:,2].cpu(), bins=50, alpha=0.7, density=True, label='GAN', range=[_min, _max])
 plt.xlabel('doca [mm]')
 plt.legend()
 plt.savefig(output_dir+'comp_doca.png', dpi=120)
@@ -230,15 +319,31 @@ plt.savefig(output_dir+'comp_doca.png', dpi=120)
 # Loss plots
 plt.figure()
 n_critic = len(discriminator_losses) // len(generator_losses)
-plt.plot(np.linspace(0, n_epochs // n_critic, num=len(discriminator_losses)), discriminator_losses,
+plt.plot(np.linspace(0, n_epochs, num=len(discriminator_losses)), discriminator_losses,
         label='Discriminator', alpha=0.7)
 plt.plot(np.linspace(0, n_epochs, num=len(generator_losses)), generator_losses, alpha=0.7,
         label='Generator')
 plt.ylabel('WGAN-GP loss')
 plt.xlabel('Epoch')
+#plt.ylim(-200, 200)
 plt.legend()
 plt.savefig(output_dir+'losses.png', dpi=120)
 
+# Critic score (-(D loss - GP))
+if len(gradient_penalty) > 0:
+    plt.figure()
+    plt.plot(np.linspace(0, n_epochs, num=len(discriminator_losses)), 
+            -np.subtract(discriminator_losses, gradient_penalty))
+    plt.ylabel('Critic score')
+    plt.xlabel('Epoch')
+    plt.savefig(output_dir+'critic_score.png', dpi=120)
+
+# GP loss plot
+plt.figure()
+plt.plot(np.linspace(0, n_epochs, num=len(gradient_penalty)), gradient_penalty)
+plt.ylabel('Gradient penalty')
+plt.xlabel('Epoch')
+plt.savefig(output_dir+'gp.png', dpi=120)
 
 # Sample real sequences of 2048 hits from the training set.
 # Real data in evaluation is not pre-processed, so it does not need to be inv_preprocessed.
