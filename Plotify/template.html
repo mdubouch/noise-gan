@@ -1,0 +1,91 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title> Title </title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+    <script type="text/javascript" src="Plotify.js"></script>
+    <script style="text/javascript">
+	// Instantiate Parameters.  Format is: 
+	// aParam=new Parameter('aParam',Array('display','names'),Array('filename','segments'));
+
+	// Instantiate Images. Format is:
+	//anImage=new Image("anImage","mouseover and alt text",Array("strings_and_",parameters,"to/define_path_to/",image),"display_extension","download_extension");
+    </script>
+</head>
+
+<body>
+    <div id="header">
+	<table id="header_table">
+	    <tr>
+		<td><h1> Title for the page </h1>   
+		</td><td>
+		    <b> Plots by Your Name </b><br/>
+		    <b> Other relavant citation</b><br/>
+		</td><td>
+		<a  href="all_results.tar.gz">Maybe use this link to download everything as a TarBall?</a>
+		</td>
+	</tr>
+    </table>
+    </div>
+    <div id="container">
+	<div id="center" class="column">
+	    <div  class="column">
+		<h1>Plots</h1>
+		<table class="plots">
+		    <tr>
+			<td>
+			    <div id="information" >
+			    <h1> Simulation details: </h1>
+			    <ul>
+				<li>
+				<b>Detail:</b> Graphite
+				</li><li>
+				<b>Software used:</b> 
+				</li>
+			    </ul>
+
+			    <h1> Plot details: </h1>
+			    <ul>
+				<li>
+				<b>Top Right:</b> Arrival times of different particles
+				</li><li>
+				<b>Bottom Left:</b> Longitudinal Vs. Transverse momentum for a given particle species
+				</li><li>
+				<b>Bottom Right:</b> Beam profile for a given particle species
+				</li>
+			    </ul>
+
+			    <div>
+			</td>
+			<td id="plot_one">
+			    <script style="text/javascript">
+				plot_one.writeHtml("big");
+			    </script>
+			</td>
+			<td id="plot_two">
+			    <script style="text/javascript">
+				plot_two=new Image("plot_two","Descriptive text",Array("plots/",aParam,"/plot_two/",aParam,"_all"),"png","eps");
+				plot_two.writeHtml();
+			    </script>
+			</td>
+		    </tr>
+		</table>
+	    </div>
+	</div>
+
+	<div id="left" class="column">
+	    <div id="parameter_block" >
+		<h1> Parameters </h1>
+		<div class=parameter id='length'>
+		    <h1> Length (cm) </h1>
+		    <script style='text/javascript'> length.writeHtml(3,4)</script>
+		</div>
+	    </div>
+	</div>
+	<div id="footer">
+	    Made using the Plotify tool by Ben Krikler for the Coders Club of Imperial College London's HEP group.<br/>
+	</div>
+    </body>
+</html>
