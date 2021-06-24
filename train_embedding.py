@@ -71,16 +71,18 @@ context_size = args.context_size
 embedding_dim = args.embedding_dim
 model = cdc_embedding.CDCEmbedding(context_size, embedding_dim, n_wires).to(device)
 
-optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+
+from training_state import TrainingState
+ts = TrainingState(context_size, embedding_dim, n_wires, device=device)
+
 if args.cff is not None:
-    save_file = torch.load(args.cff)
-    model.load_state_dict(save_file['model'])
-    optim.load_state_dict(save_file['optim'])
+    ts = torch.load(args.cff)['state']
 
 # Create a distance matrix for a discrete set of z values so we don't have to
 # compute it at each iteration.
 print('Calculating distance matrices...')
-n_z_vals = 1
+n_z_vals = 100
 z_vals = torch.linspace(0, 1, n_z_vals).unsqueeze(0)
 xhv = torch.tensor(xhv).unsqueeze(1)
 xro = torch.tensor(xro).unsqueeze(1)
@@ -96,21 +98,33 @@ assert(s_pos.shape == (2, n_wires, n_z_vals))
 dist_matrix = torch.sqrt((s_pos.unsqueeze(1) - s_pos.unsqueeze(2)).pow(2).sum(dim=0) + 1e-16)
 assert(dist_matrix.shape == (n_wires, n_wires, n_z_vals))
 
+# Assign manual seed here so we always get the same train/test splitting
+torch.manual_seed(1337)
 perm_z = torch.randperm(n_z_vals)
 train_z = perm_z[:n_z_vals - n_z_vals // 10]
-#test_z = perm_z[n_z_vals - n_z_vals // 10:]
+test_z = perm_z[n_z_vals - n_z_vals // 10:]
+# Recover a new random seed
+torch.seed()
 
-losses = []
-test_losses = []
-accuracy = []
-test_accuracy = []
+def diagnostic_plots():
+    plt.figure()
+    plt.plot(np.linspace(0, ts.its, num=len(ts.losses)), ts.losses, alpha=0.8)
+    plt.plot(np.linspace(0, ts.its, num=len(ts.test_losses)), ts.test_losses, alpha=0.8)
+    plt.savefig('embedding_losses.png')
+    plt.close()
+    plt.figure()
+    plt.plot(np.linspace(0, ts.its, num=len(ts.accuracy)), ts.accuracy, alpha=0.8)
+    plt.plot(np.linspace(0, ts.its, num=len(ts.test_accuracy)), ts.test_accuracy, alpha=0.8)
+    plt.ylim(0, 1)
+    plt.savefig('embedding_accuracy.png')
+    plt.close()
 
 print('Training start')
 n_its = args.n_epochs
-batch_size=16
+batch_size=64
 for i in range(n_its):
-    model.train()
-    optim.zero_grad()
+    ts.model.train()
+    ts.optim.zero_grad()
     # Pick a random z value from the train set
     z = train_z[torch.randint(0, train_z.shape[0], (1,))]
     d_mat = dist_matrix[:,:,z]
@@ -120,45 +134,44 @@ for i in range(n_its):
     if i == 0:
         assert(context.shape == (batch_size, context_size))
 
-    pred = model(context)
+    pred = ts.model(context)
     loss = F.cross_entropy(pred, tgt)
-    losses.append(loss.item())
-    if i % 100 == 0:
-        print(i, loss.item())
-        pred_hard = pred.argmax(dim=1)
-        print(pred_hard.shape)
-        acc = (pred_hard == tgt).sum() / batch_size
-        accuracy.append(acc.item())
+    ts.losses.append(loss.item())
+    if (i+1) % 100 == 0:
+        print('%d / %d, %.3f' % (i+1, n_its, loss.item()))
 
     loss.backward()
-    optim.step()
+    ts.optim.step()
 
-    #if i % 100 == 0:
-    #    model.eval()
-    #    with torch.no_grad():
-    #        z = test_z[torch.randint(0, test_z.shape[0], (1,))]
-    #        d_mat = dist_matrix[:,:,z]
-    #        
-    #        tgt = torch.randint(0, n_wires, (batch_size,)).to(device)
-    #        context = (1/d_mat[tgt]).topk(context_size+1, dim=1).indices[:,1:].squeeze().to(device)
-    #        pred = model(context)
-    #        loss = F.cross_entropy(pred, tgt)
-    #        test_losses.append(loss.item())
-    #        pred_hard = pred.argmax(dim=1)
-    #        acc = (pred_hard == tgt).sum() / batch_size
-    #        test_accuracy.append(acc.item())
+    pred_hard = pred.argmax(dim=1)
+    acc = (pred_hard == tgt).sum() / batch_size
+    ts.accuracy.append(acc.item())
+
+    ts.its += 1
+
+    if (i+1) % 10 == 0:
+        ts.model.eval()
+        with torch.no_grad():
+            z = test_z[torch.randint(0, test_z.shape[0], (1,))]
+            d_mat = dist_matrix[:,:,z]
+            
+            tgt = torch.randint(0, n_wires, (batch_size,)).to(device)
+            context = (1/d_mat[tgt]).topk(context_size+1, dim=1).indices[:,1:].squeeze().to(device)
+            pred = ts.model(context)
+            loss = F.cross_entropy(pred, tgt)
+            ts.test_losses.append(loss.item())
+            pred_hard = pred.argmax(dim=1)
+            acc = (pred_hard == tgt).sum() / batch_size
+            ts.test_accuracy.append(acc.item())
+    if (i+1) % 100 == 0:
+        diagnostic_plots()
+    if (i+1) % 1000 == 0:
+        print('Saving model as "%s"' % args.output)
+        ts.save(args.output)
 
 
-
-plt.figure()
-plt.plot(np.linspace(0, n_its, num=len(losses)), losses)
-plt.plot(np.linspace(0, n_its, num=len(test_losses)), test_losses)
-plt.savefig('embedding_losses.png')
-plt.figure()
-plt.plot(np.linspace(0, n_its, num=len(accuracy)), accuracy)
-plt.plot(np.linspace(0, n_its, num=len(test_accuracy)), test_accuracy)
-plt.savefig('embedding_accuracy.png')
+diagnostic_plots()
 
 print('Saving model as "%s"' % args.output)
-torch.save({'model': model.state_dict(), 'optim': optim.state_dict()}, args.output)
+ts.save(args.output)
 print('OK')

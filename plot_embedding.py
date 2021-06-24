@@ -7,7 +7,7 @@ import argparse
 parser = argparse.ArgumentParser('Plot CDC embedding network')
 parser.add_argument('--embedding-dim', type=int, default=16)
 parser.add_argument('--context-size', type=int, default=6)
-parser.add_argument('--cff', '--continue-from-file', type=str, default=None)
+parser.add_argument('input', type=str)
 args = parser.parse_args()
 
 import uproot3 as uproot
@@ -63,15 +63,12 @@ device = torch.device('cpu')
 if torch.cuda.is_available():
     device = torch.device('cuda:0')
 
-import cdc_embedding
+from training_state import TrainingState
 print('Initialising model...')
 context_size = args.context_size
 embedding_dim = args.embedding_dim
-model = cdc_embedding.CDCEmbedding(context_size, embedding_dim, n_wires).to(device)
-
-if args.cff is not None:
-    save_file = torch.load(args.cff)
-    model.load_state_dict(save_file['model'])
+ts = torch.load(args.input)['state']
+print("Plotting at iteration %d" % ts.its)
 
 xro = torch.tensor(xro)
 yro = torch.tensor(yro)
@@ -81,7 +78,7 @@ print(real_dist.shape)
 
 # Plot some embedding wire positions
 wires = torch.arange(0, n_wires).cuda()
-emb_wires = model.emb(wires).detach().cpu()
+emb_wires = ts.model.emb(wires).detach().cpu()
 plt.figure()
 #plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=wires.float().cpu(), cmap='rainbow')
 plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=real_dist[0], cmap='rainbow')
@@ -89,8 +86,10 @@ plt.savefig('emb_wires.png')
 
 print(emb_wires.shape)
 emb_dist = torch.sqrt((emb_wires.unsqueeze(1) - emb_wires.unsqueeze(0)).pow(2).sum(dim=2))
+emb_sim = torch.tensordot(emb_wires, emb_wires, dims=[[1], [1]]) / emb_wires.norm(dim=1).unsqueeze(1) / emb_wires.norm(dim=1).unsqueeze(0)
 print(emb_dist.shape)
-w0mat = torch.stack([real_dist[4000].float() / real_dist.mean(), emb_dist[4000].float() / emb_dist.mean()])
+print(emb_sim.shape)
+w0mat = torch.stack([real_dist[4000].float() / real_dist.std(), emb_sim[4000].float() / emb_sim.std()])
 print(w0mat.shape)
 plt.figure()
 plt.imshow(w0mat.cpu(), interpolation='none', aspect=200)
