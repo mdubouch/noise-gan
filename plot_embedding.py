@@ -5,8 +5,6 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 
 import argparse
 parser = argparse.ArgumentParser('Plot CDC embedding network')
-parser.add_argument('--embedding-dim', type=int, default=16)
-parser.add_argument('--context-size', type=int, default=6)
 parser.add_argument('input', type=str)
 args = parser.parse_args()
 
@@ -65,10 +63,11 @@ if torch.cuda.is_available():
 
 from training_state import TrainingState
 print('Initialising model...')
-context_size = args.context_size
-embedding_dim = args.embedding_dim
-ts = torch.load(args.input)['state']
+ts = torch.load(args.input+'/cdc_embedding.pt')['state']
 print("Plotting at iteration %d" % ts.its)
+
+import os
+os.chdir(args.input)
 
 xro = torch.tensor(xro)
 yro = torch.tensor(yro)
@@ -79,21 +78,48 @@ print(real_dist.shape)
 # Plot some embedding wire positions
 wires = torch.arange(0, n_wires).cuda()
 emb_wires = ts.model.emb(wires).detach().cpu()
-plt.figure()
+plt.figure(figsize=(12,6))
+plt.subplot(121)
+plt.scatter(xro, yro, s=1, c=real_dist[0], cmap='rainbow')
+plt.gca().set_aspect(1.0)
+plt.subplot(122)
 #plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=wires.float().cpu(), cmap='rainbow')
 plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=real_dist[0], cmap='rainbow')
+plt.gca().set_aspect(1.0)
 plt.savefig('emb_wires.png')
+
+plt.figure(figsize=(12,6))
+real_theta = np.arctan2(yro, xro)
+#real_theta = np.sin(real_theta/2) * np.cos(real_theta/2)
+plt.subplot(121)
+plt.scatter(xro, yro, s=1, c=real_theta, cmap='hsv')
+plt.gca().set_aspect(1.0)
+plt.subplot(122)
+#plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=wires.float().cpu(), cmap='rainbow')
+plt.scatter(emb_wires[:,0], emb_wires[:,1], s=1, c=real_theta, cmap='hsv')
+plt.gca().set_aspect(1.0)
+plt.savefig('emb_wires_theta.png')
 
 print(emb_wires.shape)
 emb_dist = torch.sqrt((emb_wires.unsqueeze(1) - emb_wires.unsqueeze(0)).pow(2).sum(dim=2))
 emb_sim = torch.tensordot(emb_wires, emb_wires, dims=[[1], [1]]) / emb_wires.norm(dim=1).unsqueeze(1) / emb_wires.norm(dim=1).unsqueeze(0)
 print(emb_dist.shape)
 print(emb_sim.shape)
-w0mat = torch.stack([real_dist[4000].float() / real_dist.std(), emb_sim[4000].float() / emb_sim.std()])
+w0mat = torch.stack([real_dist[2000].float() / real_dist.std(), emb_sim[2000].float() / emb_sim.std()])
+#w0mat = torch.stack([real_dist[0].float() / real_dist.std(), emb_dist[0].float() / emb_dist.std()])
 print(w0mat.shape)
 plt.figure()
 plt.imshow(w0mat.cpu(), interpolation='none', aspect=200)
 plt.savefig('emb_matrix.png', dpi=240)
 
+from sklearn.decomposition import PCA
+pca = PCA(2)
+y = pca.fit_transform(emb_wires)
+print(y.shape)
+plt.figure()
+plt.scatter(y[:,0], y[:,1], c=real_dist[0], cmap='hsv', s=1)
+plt.savefig('emb_pca.png')
 
+
+os.chdir('../')
 print('OK')

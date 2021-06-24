@@ -5,7 +5,7 @@ import torch.nn.functional as F
 class CDCEmbedding(nn.Module):
     def __init__(self, context_size, hidden_size, n_wires):
         super().__init__()
-        self.emb = nn.Embedding(n_wires, hidden_size)
+        self.emb = nn.Embedding(n_wires, hidden_size, max_norm=1.0)
         self.lin = nn.Linear(hidden_size, n_wires)
     def forward(self, x):
         # shape=(batch, context_size)

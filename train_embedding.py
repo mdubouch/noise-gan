@@ -1,4 +1,11 @@
 #!/usr/bin/python3
+#$ -P P_comet
+#$ -j y
+#$ -cwd
+#$ -q mc_gpu_long
+#$ -pe multicores_gpu 4
+#$ -l sps=1,GPU=1,GPUtype=V100
+
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
@@ -8,9 +15,15 @@ parser = argparse.ArgumentParser('Train CDC embedding network')
 parser.add_argument('--n-epochs', type=int, default=1)
 parser.add_argument('--embedding-dim', type=int, default=16)
 parser.add_argument('--context-size', type=int, default=6)
-parser.add_argument('--output', '-o', type=str, default='cdc_embedding.pt')
 parser.add_argument('--cff', '--continue-from-file', type=str, default=None)
 args = parser.parse_args()
+
+import os
+job_id = int(os.getenv('JOB_ID', default='0'))
+output_dir = 'embedding_%d/' % (job_id)
+print('Outputting to %s' % (output_dir))
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 import uproot3 as uproot
 print('Loading CDC geometry...')
@@ -72,12 +85,14 @@ embedding_dim = args.embedding_dim
 model = cdc_embedding.CDCEmbedding(context_size, embedding_dim, n_wires).to(device)
 
 
-
 from training_state import TrainingState
 ts = TrainingState(context_size, embedding_dim, n_wires, device=device)
 
 if args.cff is not None:
     ts = torch.load(args.cff)['state']
+
+# Move to output directory once all the data and modules have been imported
+os.chdir(output_dir)
 
 # Create a distance matrix for a discrete set of z values so we don't have to
 # compute it at each iteration.
@@ -106,7 +121,7 @@ test_z = perm_z[n_z_vals - n_z_vals // 10:]
 # Recover a new random seed
 torch.seed()
 
-def diagnostic_plots():
+def diagnostic_plots(ts):
     plt.figure()
     plt.plot(np.linspace(0, ts.its, num=len(ts.losses)), ts.losses, alpha=0.8)
     plt.plot(np.linspace(0, ts.its, num=len(ts.test_losses)), ts.test_losses, alpha=0.8)
@@ -164,14 +179,16 @@ for i in range(n_its):
             acc = (pred_hard == tgt).sum() / batch_size
             ts.test_accuracy.append(acc.item())
     if (i+1) % 100 == 0:
-        diagnostic_plots()
+        diagnostic_plots(ts)
     if (i+1) % 1000 == 0:
-        print('Saving model as "%s"' % args.output)
-        ts.save(args.output)
+        print('Saving model as "%s"' % (output_dir+'cdc_embedding.pt'))
+        ts.save('cdc_embedding.pt')
 
 
-diagnostic_plots()
+diagnostic_plots(ts)
 
-print('Saving model as "%s"' % args.output)
-ts.save(args.output)
+print('Saving model as "%s"' % (output_dir+'cdc_embedding.pt'))
+ts.save('cdc_embedding.pt')
+
+os.chdir('../')
 print('OK')
