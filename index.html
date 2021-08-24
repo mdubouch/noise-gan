@@ -1,0 +1,114 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>GAN evaluation plots</title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+    <script type="text/javascript" src="Plotify/Plotify.js"></script>
+    <script style="text/javascript" src="job_id_list.js"></script>
+    <script style="text/javascript" src="config.js"></script>
+</head>
+
+<body>
+    <div id="header">
+	<table id="header_table">
+	    <tr>
+            <!--
+		</td><td>
+                <a style="font-size:17pt" href=MR_page.pdf>PDF layout</a>
+		</td><td>
+                <ul>
+                    <li>
+                    <a style="font-size:10pt" href=plots/v17_first/data_no-fit.txt >Dataframe: Fit inputs: data, corrected MC</a>
+                    </li> <li>
+                    <a style="font-size:10pt" href=plots/v17_first/data_no-fit-CR.txt >Dataframe: Control Region fit inputs: data, corrected MC</a>
+                    </li> <li>
+                    <a style="font-size:10pt" href=plots/v17_first/data_full-fit-bg.txt >Dataframe: CR+SR, BG-only postfit</a>
+                    </li> <li>
+                    <a style="font-size:10pt" href=plots/v17_first/data_cr-only.txt >Dataframe: CR-only postfit</a>
+                    </li>
+                </ul>
+            --!>
+	</tr>
+    </table>
+    </div>
+    <div id="container">
+	<div id="center" class="column">
+	    <div  class="column">
+		<h1>Plots</h1>
+                <a href='job_descriptions.txt'>Job descriptions</a>
+		<table class="plots" >
+                        <tbody id="plot_table">
+		    <tr>
+			<td colspan=2>
+			    <div id="information" >
+			    <ul>				
+			    </ul>
+
+                            <!--
+			    <h1> Plot details: </h1>
+			    <ul>
+				<li>
+				<b>Top Right:</b> Arrival times of different particles
+				</li><li>
+				<b>Bottom Left:</b> Longitudinal Vs. Transverse momentum for a given particle species
+				</li><li>
+				<b>Bottom Right:</b> Beam profile for a given particle species
+				</li>
+			    </ul>
+                            --!>
+			    </div>
+			</td>
+                    </tr>
+                </tbody>
+		</table>
+	    </div>
+	</div>
+	<div id="left" class="column">
+	    <div id="parameter_block" >
+		<h1> Parameters </h1>
+	    </div>
+	</div>
+	<div id="footer">
+                Made using <a href=https://github.com/ic-coders-club/plotify>Plotify</a>.<br/>
+	</div>
+    </body>
+</html>
+<script style="text/javascript">
+var section=document.getElementById("plot_table");
+var images=Array();
+var html="";
+for(i=0;i<image_name_list.length;i++){
+        image_name=image_name_list[i];
+        if( (i%n_cols)==0) {
+                if(i!=0) html+="</tr>";
+                html+="<tr>";
+        }
+        if(image_name){ 
+                var img_id=image_name.replace(/[[\]]/g,"_");
+                images.push(new Image(img_id,"",image_filename(image_name),image_extension,image_download));
+                html+="<td id="+img_id+"><h3>"+image_name+"</h3></td>";
+        }else{
+                html+="<td ></td>";
+        }
+}
+section.innerHTML+=html;
+for(i=0;i<images.length;i++){
+        images[i].writeHtml();
+}
+section.innerHTML+="</tr>";
+
+var section=document.getElementById("parameter_block");
+var html="";
+for(var name in ParameterList){
+        if (!ParameterList.hasOwnProperty(name)) continue;
+        var html="<div class=parameter id='PARAM_NAME'>" +
+              "<h1> PARAM_NAME </h1>" +
+              "</div>";
+        section.innerHTML+=html.replace(/PARAM_NAME/g, name);
+        param = ParameterList[name];
+        param.writeHtml(0,1,name,'table');
+        param.makeCycleButton(name,2000);
+}
+</script>

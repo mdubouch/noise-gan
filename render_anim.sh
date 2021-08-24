@@ -8,4 +8,4 @@ if [[ -z $JOB_ID ]]; then
 fi
 
 cd output_$JOB_ID/anim
-ffmpeg -framerate 12 -i frame_%03d.png -c:v libvpx-vp9 -crf 30 -b:v 0 -pix_fmt yuva420p anim.webm
+ffmpeg -framerate 25 -i frame_%03d.png -c:v libvpx-vp9 -crf 30 -b:v 0 -pix_fmt yuva420p anim.webm
