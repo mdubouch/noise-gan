@@ -13,7 +13,7 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 parser = argparse.ArgumentParser('Train CDC GAN', argparse.SUPPRESS)
 parser.add_argument('--ngf', type=int)
 parser.add_argument('--ndf', type=int)
-parser.add_argument('--latent-dims', type=int, default=256)
+parser.add_argument('--latent-dims', '--ld', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=2048)
 parser.add_argument('--job-id', type=int)
 parser.add_argument('--epoch', type=int)
@@ -90,6 +90,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(args.seed)
 
 import dataset_altered as dataset
+#import dataset as dataset
 data = dataset.Data()
 
 import geom_util
@@ -97,7 +98,7 @@ gu = geom_util.GeomUtil(data.get_cdc_tree())
 
 import importlib
 networks = importlib.import_module('networks%s' % (args.net_version))
-print('Evaluating with networks version %d' % (networks.__version__))
+print('Evaluating with networks version %d' % (args.net_version))
 # Initialize networks
 gen = to_device(networks.Gen(ngf=ngf, latent_dims=latent_dims, seq_len=seq_len, encoded_dim=encoded_dim))
 disc = to_device(networks.Disc(ndf=ndf, seq_len=seq_len, encoded_dim=encoded_dim))
@@ -106,6 +107,8 @@ print('Gen summary:')
 torchsummary.summary(gen, input_size=(latent_dims,))
 print('Disc summary:')
 #torchsummary.summary(disc, input_size=(3+16, seq_len))
+print('generator params:', networks.get_n_params(gen))
+print('discriminator params:', networks.get_n_params(disc))
 
 disciminator_losses = []
 generator_losses = []
@@ -171,13 +174,13 @@ def load_states(path):
     print('OK')
 load_states('output_%d/states_%d.pt' % (args.job_id, args.epoch))
 
-gen.eval()
+gen.train()
 
 def sample_fake(batch_size, tau):
     noise = to_device(torch.randn((batch_size, latent_dims), requires_grad=True))
     p, w = gen(noise, 0.0, tau)
     dec_w = ae.dec(w)
-    dec_w = F.gumbel_softmax(dec_w, dim=1, hard=True)
+    dec_w = F.gumbel_softmax(dec_w, dim=1, hard=True, tau=tau)
     #dec_w = F.softmax(dec_w, dim=1)
     return p, dec_w
 
@@ -193,20 +196,36 @@ print('max dist real:', real_dist_matrix.max())
 all_wires = F.one_hot(torch.arange(gu.n_wires), 
         num_classes=gu.n_wires).float().cuda().requires_grad_(True)
 
-enc = ae.enc_net(all_wires)
+one_wire = F.one_hot(torch.tensor([1]), num_classes=gu.n_wires).float().cuda()
+print(one_wire)
+one_enc = ae.enc(one_wire.view(1, gu.n_wires, 1))
+print(one_enc)
+one_dec = ae.dec(one_enc)
+print(one_dec)
+print(one_dec.max().item())
+print(one_dec.argmax())
+
+enc = ae.enc(all_wires.view(1, gu.n_wires, gu.n_wires))
 print(enc.shape)
+print(enc)
 # enc (n_wires, enc_dim)
-fake_dist_matrix = enc.view(gu.n_wires, 1, -1) - enc.view(1, gu.n_wires, -1)
+fake_dist_matrix = enc.reshape(gu.n_wires, 1, -1) - enc.reshape(1, gu.n_wires, -1)
 fake_dist_matrix = torch.sqrt(1e-16 + (fake_dist_matrix**2).sum(dim=2))
 print('dist 0->3605 real', real_dist_matrix[0,1])
 print('dist 0->3605 fake', fake_dist_matrix[0,1])
 print('max dist fake:', fake_dist_matrix.max())
 dist_loss = nn.MSELoss()(fake_dist_matrix, real_dist_matrix)
 print('dist loss:', dist_loss.item())
-encdec = ae.dec_net(enc)
+encdec = ae.dec(enc)
+fake_dist = fake_dist_matrix.detach().cpu().numpy()
+#print('dist fake:', fake_dist.mean(), fake_dist[fake_dist>1e-7].min(), fake_dist.max())
 # encdec (256, 3606)
-ae_loss = nn.CrossEntropyLoss()(encdec, torch.arange(gu.n_wires).cuda())
-print('ae loss:', ae_loss.item())
+print(encdec.shape)
+choice = torch.argmax(encdec, dim=1)
+print(choice.shape, all_wires.shape)
+hit = (choice.squeeze() == torch.arange(gu.n_wires).cuda()).sum().float()
+acc = hit / gu.n_wires
+print('AE accuracy:', acc)
 
 import numpy as np
 import matplotlib
@@ -227,6 +246,14 @@ print("Loading training data")
 data.load()
 print("OK")
 ###########
+def get_wire_weights():
+    wire_counts = np.bincount(data.wire, minlength=gu.n_wires)
+    print(wire_counts.shape)
+    return torch.tensor(1 / (wire_counts + 1e-1), device='cuda', dtype=torch.float)
+wire_weights = get_wire_weights()
+print(encdec.shape)
+ae_loss = F.cross_entropy(encdec, torch.arange(gu.n_wires).unsqueeze(0).cuda(), weight=wire_weights)
+print('ae loss:', ae_loss.item())
 
 from matplotlib.patches import Ellipse
 def only_walls(ax):
@@ -280,7 +307,7 @@ n_elements = n_its * n_seqs * seq_len
 inv_p = np.zeros((n_feat, n_elements))
 
 for i in range(n_its):
-    gen.eval()
+    gen.train()
     fake_p, fake_w = sample_fake(n_seqs, tau)
     fake_p = fake_p.permute(0, 2, 1).flatten(0, 1)
     _inv_p = data.inv_preprocess(fake_p).cpu().numpy().T
@@ -376,8 +403,8 @@ plt.close()
 # Distance distribution comparison
 plt.figure()
 # Real
-x = data.dbg_z[first_idx:last_idx]-7650
-y = data.dbg_y[first_idx:last_idx]
+x = gu.wire_x[data.wire[first_idx:last_idx]]
+y = gu.wire_y[data.wire[first_idx:last_idx]]
 real_dist = np.sqrt((x[1:] - x[:-1])**2 + (y[1:] - y[:-1])**2)
 _range = [min(real_dist.min(), fake_dist.min()), max(real_dist.max(), fake_dist.max())]
 plt.hist(real_dist, bins=150, alpha=0.7, range=_range);
@@ -491,21 +518,21 @@ if len(ae_losses) > 0:
 
 if len(pretrain_losses) > 0:
     plt.figure()
-    plt.plot(np.linspace(0, n_epochs, num=len(pretrain_losses)), pretrain_losses)
+    plt.plot(pretrain_losses)
     plt.ylabel('Autoencoder pre-training loss')
     plt.xlabel('Epoch')
     plt.savefig(output_dir+'pretrain_loss.png')
     plt.close()
 
     plt.figure()
-    plt.plot(np.linspace(0, n_epochs, num=len(pretrain_acc)), pretrain_acc)
+    plt.plot(pretrain_acc)
     plt.ylabel('Autoencoder pre-training accuracy')
     plt.xlabel('Epoch')
     plt.savefig(output_dir+'pretrain_acc.png')
     plt.close()
 
     plt.figure()
-    plt.plot(np.linspace(0, n_epochs, num=len(pretrain_dist_losses)), pretrain_dist_losses)
+    plt.plot(pretrain_dist_losses)
     plt.ylabel('Autoencoder pre-training distance loss')
     plt.xlabel('Epoch')
     plt.savefig(output_dir+'pretrain_dist_loss.png')
@@ -525,8 +552,8 @@ if len(dist_var_losses) > 0:
 def sample_real(batch_size):
     idx = np.random.randint(0, data.edep.size - seq_len, size=(batch_size,))
     start = idx
-    stop = idx + 2048
-    slices = np.zeros((batch_size, 2048), dtype=np.int64)
+    stop = idx + seq_len
+    slices = np.zeros((batch_size, seq_len), dtype=np.int64)
     for i in range(batch_size):
         slices[i] = np.r_[start[i]:stop[i]] 
     edep = data.edep[slices]
@@ -615,11 +642,12 @@ fake_t = np.zeros(n_seqs * seq_len * n)
 fake_doca = np.zeros(n_seqs * seq_len * n)
 for i in range(n):
     with torch.no_grad():
-        gen.eval()
+        gen.train()
         
         latent_var = to_device(torch.randn((n_seqs, latent_dims)))
         p, w = gen(latent_var, 0, tau)
-        w = F.gumbel_softmax(ae.dec(w), dim=1, hard=True)
+        w = F.gumbel_softmax(ae.dec(w), dim=1, hard=True, tau=tau)
+        #w = F.softmax(ae.dec(w), dim=1)
         fake_wire[i*seq_len*n_seqs:(i+1)*seq_len*n_seqs] = torch.argmax(w, dim=1).cpu().flatten()
         inv_p = data.inv_preprocess(p.permute(0,2,1).flatten(0,1)) 
         fake_edep[i*seq_len*n_seqs:(i+1)*seq_len*n_seqs] = inv_p[:,0]

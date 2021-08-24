@@ -30,3 +30,24 @@ class GeomUtil():
         assert((x == self.wire_x).all())
         assert((y == self.wire_y).all())
 
+    def draw_cdc(self, ax, margin=50):
+        r = np.sqrt(self.wire_x**2 + self.wire_y**2)
+        max_r = r.max()
+        min_r = r.min()
+        r_layer1 = r[self.cum_n_wires[0]]
+        layer_spacing = r_layer1 - min_r
+        min_r = min_r - layer_spacing*2
+        max_r = max_r + layer_spacing*2
+
+        from matplotlib.patches import Ellipse
+        inner = Ellipse((0, 0), min_r*2, min_r*2, facecolor=(0, 0, 0, 0), edgecolor='gray')
+        outer = Ellipse((0, 0), max_r*2, max_r*2, facecolor=(0, 0, 0, 0), edgecolor='gray')
+
+        ax.add_patch(inner)
+        ax.add_patch(outer);
+
+        max_r = max_r+margin
+        min_r = min_r-margin
+
+        ax.set(xlim=(-max_r,max_r), ylim=(-max_r,max_r), xlabel='x [mm]', ylabel='y [mm]')
+

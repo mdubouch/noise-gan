@@ -101,11 +101,11 @@ class Data():
     
         train_minmax_torch = torch.from_numpy(self.train_minmax).T
         chunk_size = seq_len
-        chunk_stride = 64
+        chunk_stride = seq_len
         train_minmax_chunked = train_minmax_torch.unfold(1, 
                 chunk_size, chunk_stride) # (feature, batch, seq)
         self.n_chunks = train_minmax_chunked.shape[1]
-        n_features = train_minmax_chunked.shape[0]
+        self.n_features = train_minmax_chunked.shape[0]
         
         wire_torch = torch.from_numpy(self.wire).long().unsqueeze(0)
         wire_chunked = wire_torch.unfold(1, 

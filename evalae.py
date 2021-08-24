@@ -19,6 +19,7 @@ parser.add_argument('--job-id', type=int)
 parser.add_argument('--epoch', type=int)
 parser.add_argument('--net-version', type=int)
 parser.add_argument('--seed', type=int, default=1339)
+parser.add_argument('--dpi', type=int, default=120)
 parser.add_argument('--gfx', type=bool, default=False)
 args = parser.parse_args()
 output_dir = 'output_%d/' % (args.job_id)
@@ -190,6 +191,7 @@ plt.rcParams['savefig.transparent'] = False
 plt.rcParams['axes.labelsize'] = 'large'
 plt.rcParams['axes.titlesize'] = 'x-large'
 plt.rcParams['savefig.facecolor'] = 'white'
+plt.rcParams['savefig.dpi'] = args.dpi
 
 inv_p = data.inv_preprocess(p.permute(0, 2, 1).flatten(0, 1))
 print(inv_p.shape)
@@ -214,7 +216,7 @@ def only_walls(ax):
 fw = torch.argmax(w, dim=1).flatten().detach().cpu()
 print(fw.shape)
 plt.figure()
-plt.scatter(gu.wire_x[fw], gu.wire_y[fw], s=inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
+plt.scatter(gu.wire_x[fw], gu.wire_y[fw], s=1+inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
         vmin=data.doca.min(), vmax=data.doca.max(), alpha=0.8
         )
 # Draw lines between consecutive hits
@@ -227,6 +229,27 @@ only_walls(ax)
 plt.savefig(output_dir+'gen_scatter.png', dpi=240)
 plt.close()
 
+# No lines
+plt.figure()
+plt.scatter(gu.wire_x[fw], gu.wire_y[fw], s=1+inv_p[:,0] * 1e3, c=inv_p[:,2], cmap='inferno',
+        vmin=data.doca.min(), vmax=data.doca.max(), alpha=0.8
+        )
+ax = plt.gca()
+ax.set_aspect(1.0)
+only_walls(ax)
+plt.savefig(output_dir+'gen_scatter_nolines.png', dpi=240)
+plt.close()
+
+# Draw only lines
+plt.figure()
+scatter_l = lines.Line2D(gu.wire_x[fw], gu.wire_y[fw], linewidth=0.1, color='gray', alpha=0.7)
+ax = plt.gca()
+ax.set_aspect(1.0)
+ax.add_line(scatter_l)
+only_walls(ax)
+plt.savefig(output_dir+'gen_scatter_onlylines.png', dpi=240)
+plt.close()
+
 x = gu.wire_x[fw]
 y = gu.wire_y[fw]
 fake_dist = np.sqrt((x[1:] - x[:-1])**2 + (y[1:] - y[:-1])**2)
@@ -235,7 +258,7 @@ fake_time_diff = t[1:] - t[:-1]
 
 plt.figure()
 plt.hist(np.log10(inv_p[:,0]).cpu(), bins=50)
-plt.savefig(output_dir+'gen_edep.png', dpi=120)
+plt.savefig(output_dir+'gen_edep.png')
 plt.close()
 
 
@@ -280,7 +303,7 @@ for i in range(n_feat):
             else:
                 ax.remove()
             #    ax.hist2d(_x, _y, bins=50, range=[[-1, 1], [-1, 1]], norm=mcolors.PowerNorm(0.5))
-plt.savefig(output_dir+'feature_matrix_fake.png', dpi=240, bbox_inches='tight')
+plt.savefig(output_dir+'feature_matrix_fake.png', bbox_inches='tight')
 plt.close()
 
 #############
@@ -303,7 +326,7 @@ ax[1].scatter(data.dbg_z[first_idx:last_idx]-7650, data.dbg_y[first_idx:last_idx
         vmin=data.doca.min(), vmax=data.doca.max(), alpha=0.8)
 ax[1].set_aspect(1.0)
 only_walls(ax[1])
-plt.savefig(output_dir+'comp_scatter.png', dpi=120)
+plt.savefig(output_dir+'comp_scatter.png')
 plt.close()
 
 plt.figure()
@@ -318,6 +341,28 @@ ax.add_line(scatter_l)
 plt.savefig(output_dir+'real_scatter.png', dpi=240)
 plt.close()
 
+# No lines
+plt.figure()
+plt.scatter(gu.wire_x[data.wire[first_idx:last_idx]], gu.wire_y[data.wire[first_idx:last_idx]], s=1+data.edep[first_idx:last_idx]*1e3, c=data.doca[first_idx:last_idx], cmap='inferno',
+        vmin=data.doca.min(), vmax=data.doca.max(), alpha=0.8)
+ax = plt.gca()
+only_walls(ax)
+ax.set_aspect(1.0)
+plt.savefig(output_dir+'real_scatter_nolines.png', dpi=240)
+plt.close()
+
+# Only lines
+plt.figure()
+scatter_l = lines.Line2D(gu.wire_x[data.wire[first_idx:last_idx]], 
+        gu.wire_y[data.wire[first_idx:last_idx]],
+        linewidth=0.1, color='gray', alpha=0.7)
+ax = plt.gca()
+only_walls(ax)
+ax.set_aspect(1.0)
+ax.add_line(scatter_l)
+plt.savefig(output_dir+'real_scatter_onlylines.png', dpi=240)
+plt.close()
+
 # Distance distribution comparison
 plt.figure()
 # Real
@@ -326,7 +371,7 @@ y = data.dbg_y[first_idx:last_idx]
 real_dist = np.sqrt((x[1:] - x[:-1])**2 + (y[1:] - y[:-1])**2)
 plt.hist(real_dist[real_dist!=0], bins=50, alpha=0.7);
 plt.hist(fake_dist[fake_dist!=0], bins=50, alpha=0.7);
-plt.savefig(output_dir+'comp_dist.png', dpi=120)
+plt.savefig(output_dir+'comp_dist.png')
 plt.xlabel('Distance [mm]')
 plt.close()
 
@@ -341,7 +386,7 @@ plt.hist(t_diff, bins=50, alpha=0.7, range=_range)
 plt.hist(fake_time_diff, bins=50, alpha=0.7, range=_range)
 plt.yscale('log')
 plt.xlabel('Time difference [ns]')
-plt.savefig(output_dir+'comp_time_diff.png', dpi=120)
+plt.savefig(output_dir+'comp_time_diff.png')
 plt.close()
 
 
@@ -360,7 +405,7 @@ plt.hist(np.log10(inv_p[:,0].cpu()), bins=50, alpha=0.7, density=True,
         label='GAN', range=[_min, _max])
 plt.xlabel('log(Edep [MeV])')
 plt.legend()
-plt.savefig(output_dir+'comp_edep.png', dpi=120)
+plt.savefig(output_dir+'comp_edep.png')
 plt.close()
 
 plt.figure()
@@ -371,7 +416,7 @@ plt.hist(np.log10(inv_p[:,1].cpu()), bins=50, alpha=0.7, density=True,
         label='GAN', range=[_min, _max])
 plt.xlabel('log(t [ns])')
 plt.legend()
-plt.savefig(output_dir+'comp_t.png', dpi=120)
+plt.savefig(output_dir+'comp_t.png')
 plt.close()
 
 plt.figure()
@@ -381,7 +426,7 @@ plt.hist(data.doca, bins=50, alpha=0.7, density=True, label='G4', range=[_min, _
 plt.hist(inv_p[:,2].cpu(), bins=50, alpha=0.7, density=True, label='GAN', range=[_min, _max])
 plt.xlabel('doca [mm]')
 plt.legend()
-plt.savefig(output_dir+'comp_doca.png', dpi=120)
+plt.savefig(output_dir+'comp_doca.png')
 plt.close()
 
 # Loss plots
@@ -396,9 +441,10 @@ plt.plot(np.linspace(0, n_epochs, num=len(generator_losses)), generator_losses, 
         label='Generator')
 plt.ylabel('WGAN-GP loss')
 plt.xlabel('Epoch')
+plt.ylim(-400, 400)
 #plt.ylim(-200, 200)
 plt.legend()
-plt.savefig(output_dir+'losses.png', dpi=120)
+plt.savefig(output_dir+'losses.png')
 plt.close()
 
 # Critic score (-(D loss - GP))
@@ -408,7 +454,7 @@ if len(gradient_penalty) > 0:
             -np.subtract(discriminator_losses, gradient_penalty))
     plt.ylabel('Critic score')
     plt.xlabel('Epoch')
-    plt.savefig(output_dir+'critic_score.png', dpi=120)
+    plt.savefig(output_dir+'critic_score.png')
     plt.close()
 
 # GP loss plot
@@ -416,7 +462,7 @@ plt.figure()
 plt.plot(np.linspace(0, n_epochs, num=len(gradient_penalty)), gradient_penalty)
 plt.ylabel('Gradient penalty')
 plt.xlabel('Epoch')
-plt.savefig(output_dir+'gp.png', dpi=120)
+plt.savefig(output_dir+'gp.png')
 plt.close()
 
 # Autoencoder loss history
@@ -430,7 +476,7 @@ if len(ae_losses) > 0:
         plt.plot(np.linspace(0, n_epochs, num=len(dist_losses)), 
                 np.log10(np.array(dist_losses) + np.array(ae_losses)), label='Sum')
     plt.legend()
-    plt.savefig(output_dir+'ae_losses.png', dpi=120)
+    plt.savefig(output_dir+'ae_losses.png')
     plt.close()
 
 print(len(dist_var_losses))
@@ -439,7 +485,7 @@ if len(dist_var_losses) > 0:
     plt.plot(np.linspace(0, n_epochs, num=len(dist_var_losses)), np.log10(dist_var_losses), label='Dist var')
     plt.plot(np.linspace(0, n_epochs, num=len(dist_mean_losses)), np.log10(dist_mean_losses), label='Dist mean')
     plt.legend()
-    plt.savefig(output_dir+'dist_mean_var_losses.png', dpi=120)
+    plt.savefig(output_dir+'dist_mean_var_losses.png')
     plt.close()
 
 # Sample real sequences of 2048 hits from the training set.
@@ -477,7 +523,7 @@ for i in range(n_samples):
         ax.set_aspect(1)
         ax.scatter(gu.wire_x[w], gu.wire_y[w], s=p[0] * 1e2+0, alpha=0.7, c=p[2], cmap='inferno', vmin=data.doca.min(), vmax=data.doca.max())
         ax.axis('off')
-plt.savefig(output_dir+'grid_real.png', dpi=240, bbox_inches=None)
+plt.savefig(output_dir+'grid_real.png', bbox_inches=None)
 plt.close()
 
 # Same for fake samples
@@ -499,7 +545,7 @@ for i in range(n_samples):
         ax.set_aspect(1)
         ax.scatter(gu.wire_x[w], gu.wire_y[w], s=p[0] * 1e2+0, alpha=0.7, c=p[2], cmap='inferno', vmin=data.doca.min(), vmax=data.doca.max())
         ax.axis('off')
-plt.savefig(output_dir+'grid_fake.png', dpi=240)
+plt.savefig(output_dir+'grid_fake.png')
 plt.close()
 
 # Activated wires per sequence histogram
@@ -524,7 +570,7 @@ plt.hist(n_fake_uq, bins=50, alpha=0.7, label='GAN', range=[0, 800]);
 #plt.xlim(0, 1200)
 plt.legend()
 plt.title('Number of activated wires per sequence')
-plt.savefig(output_dir+'activated_wires.png', dpi=120)
+plt.savefig(output_dir+'activated_wires.png')
 plt.close()
 
 
@@ -554,7 +600,7 @@ plt.figure()
 plt.hist(data.wire, bins=200, alpha=0.7, density=True, label='G4');
 plt.hist(fake_wire, bins=200, alpha=0.7, density=True, label='GAN');
 plt.legend()
-plt.savefig(output_dir+'comp_wire.png', dpi=120)
+plt.savefig(output_dir+'comp_wire.png')
 plt.close()
 
 
@@ -568,7 +614,7 @@ plt.hist(fake_layer, bins=gu.n_layers, range=[0,gu.n_layers], rwidth=0.8, align=
         alpha=0.7, label='GAN', density=True)
 plt.legend()
 plt.xticks(np.arange(0, gu.n_layers))
-plt.savefig(output_dir+'comp_layer.png', dpi=120)
+plt.savefig(output_dir+'comp_layer.png')
 plt.close()
 #plt.figure()
 #plt.hist(real_radius, alpha=0.7, density=True, label='G4', bins=50)
@@ -576,7 +622,7 @@ plt.close()
 #plt.hist(fake_radius, alpha=0.7, density=True, label='GAN', bins=50);
 #        #range=[real_radius.min(), real_radius.max()], label='GAN')
 #plt.legend()
-#plt.savefig(output_dir+'comp_radius.png', dpi=120)
+#plt.savefig(output_dir+'comp_radius.png')
 
 plt.figure()
 fake_theta = np.arctan2(gu.wire_y[fake_wire], gu.wire_x[fake_wire])
@@ -584,7 +630,7 @@ real_theta = np.arctan2(data.dbg_y, (data.dbg_z-7650))
 plt.hist(real_theta, bins=50, alpha=0.7, density=True, label='G4');
 plt.hist(fake_theta, bins=50, alpha=0.7, density=True, label='GAN');
 plt.legend()
-plt.savefig(output_dir+'comp_theta.png', dpi=120)
+plt.savefig(output_dir+'comp_theta.png')
 plt.close()
 
 # Edep per layer comparison
@@ -599,5 +645,5 @@ plt.bar(np.arange(0, gu.n_layers), real_edep_pl, alpha=0.7, width=0.8, label='G4
 plt.bar(np.arange(0, gu.n_layers), fake_edep_pl, alpha=0.7, width=0.8, label='GAN')
 plt.xticks(np.arange(0, gu.n_layers))
 plt.legend()
-plt.savefig(output_dir+'comp_edep_per_layer.png', dpi=120)
+plt.savefig(output_dir+'comp_edep_per_layer.png')
 plt.close()
