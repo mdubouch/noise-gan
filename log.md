@@ -3951,7 +3951,7 @@ Huh? np.unique(data.wire) shows that not all wires even get hit once? can we ign
     + Not looking good 
 + 9815083: n1158 = ^ + no layernorm in D. It just seems to make the distributions worse.
 + 9815143: n1158, sequence_length=16, augment2
-    + Looking unstable af
+    + Looking unstable
 + 9815148: n1157, sequence_length=16, augment2
     + Better in stability
 + 9820728: n1156, seq_len=16, augment2
@@ -4178,7 +4178,7 @@ Huh? np.unique(data.wire) shows that not all wires even get hit once? can we ign
             + Unstable. So it seems this attention layer sucks...
         + 15233296/15700746: n1217 = n1212 (geomtest3) + no bottleneck + attn before last resblock + sigmoid gamma
             + geom_dim = 2, wire sphere is flat.
-            + Distributions look neat af @90. Perhaps we could increase the attention in this one or something…
+            + Distributions look neat @90. Perhaps we could increase the attention in this one or something…
             + **Best candidate ever I think**
             + Stable and seems to make good progress over time.
             + Sigmoid gamma good?
